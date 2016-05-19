@@ -1,32 +1,38 @@
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
 
-function AdvancedController($scope, settings, secureCacheDisk) {
-	$scope.flags = {
-		useDiskCache: false,
-		useCredentialApi: false
-	};
+_CKP.Options = _CKP.Options || {};
+_CKP.Options.Controller = _CKP.Options.Controller || {};
 
-  settings.getDiskCacheFlag().then(function(flag) {
-    $scope.flags.useDiskCache = flag;
-    $scope.$apply();
-  });
+_CKP.Options.Controller.AdvancedController = function AdvancedController($scope, Settings, SecureCacheDisk)
+{
+    $scope.flags = {
+        useDiskCache: false,
+        useCredentialApi: false
+    };
 
-  settings.getUseCredentialApiFlag().then( flag => {
-  	$scope.flags.useCredentialApi = flag;
-  	$scope.$apply();
-  })
+    Settings.getDiskCacheFlag().then(function (flag) {
+        $scope.flags.useDiskCache = flag;
+        $scope.$apply();
+    });
 
-  $scope.updateDiskCacheFlag = function() {
-    settings.setDiskCacheFlag($scope.flags.useDiskCache);
-    if (!$scope.useDiskCache) {
-      secureCacheDisk.clear('entries');
-      secureCacheDisk.clear('streamKey');
-    }
-  }
+    Settings.getUseCredentialApiFlag().then(function (flag) {
+        $scope.flags.useCredentialApi = flag;
+        $scope.$apply();
+    });
 
-  $scope.updateUseCredentialApiFlag = function() {
-  	settings.setUseCredentialApiFlag($scope.flags.useCredentialApi)
-  }
+    $scope.updateDiskCacheFlag = function () {
+        Settings.setDiskCacheFlag($scope.flags.useDiskCache);
 
-  $scope.flagEnabled = !!(navigator.credentials)
-}
+        if (!$scope.useDiskCache) {
+            SecureCacheDisk.clear('entries');
+            SecureCacheDisk.clear('streamKey');
+        }
+    };
+
+    $scope.updateUseCredentialApiFlag = function () {
+        Settings.setUseCredentialApiFlag($scope.flags.useCredentialApi);
+    };
+
+    $scope.flagEnabled = !!(navigator.credentials);
+};

@@ -1,0 +1,10 @@
+document.write('<script type="text/javascript" src="/services/fileSourceRegistry.js"></script>');
+document.write('<script type="text/javascript" src="/services/keepassDb.js"></script>');
+document.write('<script type="text/javascript" src="/services/keepassHeader.js"></script>');
+document.write('<script type="text/javascript" src="/services/keyFileParser.js"></script>');
+document.write('<script type="text/javascript" src="/services/optionsLink.js"></script>');
+document.write('<script type="text/javascript" src="/services/protectedMemory.js"></script>');
+document.write('<script type="text/javascript" src="/services/secureCacheDisk.js"></script>');
+document.write('<script type="text/javascript" src="/services/secureCacheMemory.js"></script>');
+document.write('<script type="text/javascript" src="/services/settings.js"></script>');
+document.write('<script type="text/javascript" src="/services/unlockedState.js"></script>');

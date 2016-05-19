@@ -1,8 +1,11 @@
+'use strict';
+var _CKP = _CKP || {};
 
-"use strict";
+_CKP.Popup = _CKP.Popup || {};
+_CKP.Popup.Controller = _CKP.Popup.Controller || {};
 
-function SettingsLinkController($scope, $location, optionsLink) {
-  $scope.showSettingsPage = function() {
-    optionsLink.go();
-  }
-}
+_CKP.Popup.Controller.SettingsLinkController = function SettingsLinkController($scope, $location, OptionsLink) {
+    $scope.showSettingsPage = function () {
+        OptionsLink.go();
+    }
+};

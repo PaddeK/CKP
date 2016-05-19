@@ -24,64 +24,64 @@ THE SOFTWARE.
 
  */
 
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
+
+_CKP.Services = _CKP.Services || {};
 
 /**
  * Parses a KeePass key file
  */
-function KeyFileParser() {
-  var exports = {
-
-  };
-
-  function hex2arr(hex) {
-    try {
-      var arr = [];
-      for (var i = 0; i < hex.length; i += 2)
-        arr.push(parseInt(hex.substr(i, 2), 16));
-      return arr;
-    } catch (err) {
-      return [];
-    }
-  }
-
-  exports.getKeyFromFile = function(keyFileBytes) {
-    var arr = new Uint8Array(keyFileBytes);
-    if (arr.byteLength == 0) {
-      return Promise.reject(new Error('key file has zero bytes'));
-    } else if (arr.byteLength == 32) {
-      //file content is the key
-      return Promise.resolve(arr);
-    } else if (arr.byteLength == 64) {
-      //file content may be a hex string of the key
-      var decoder = new TextDecoder();
-      var hexString = decoder.decode(arr);
-      var newArr = hex2arr(hexString);
-      if (newArr.length == 32) {
-        return Promise.resolve(newArr);
-      }
-    }
-
-    //attempt to parse xml
-    try {
-      var decoder = new TextDecoder();
-      var xml = decoder.decode(arr);
-      var parser = new DOMParser();
-      var doc = parser.parseFromString(xml, "text/xml");
-      var keyNode = doc.evaluate('//KeyFile/Key/Data', doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-      if (keyNode.singleNodeValue && keyNode.singleNodeValue.textContent) {
-        return Promise.resolve(Base64.decode(keyNode.singleNodeValue.textContent));
-      }
-    } catch (err) {
-      //continue, not valid xml keyfile
-    }
-
-    var SHA = {
-      name: "SHA-256"
+_CKP.Services.KeyFileParser = function KeyFileParser() {
+    return {
+        getKeyFromFile: getKeyFromFile
     };
 
-    return window.crypto.subtle.digest(SHA, arr);
-  }
+    function hex2arr(hex) {
+        var i = 0,
+            arr = [];
 
-  return exports;
-}
+        try {
+            for (; i < hex.length; i += 2) {
+                arr.push(parseInt(hex.substr(i, 2), 16));
+            }
+
+            return arr;
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function getKeyFromFile(keyFileBytes) {
+        var newArr, doc, keyNode,
+            arr = new Uint8Array(keyFileBytes);
+
+        if (arr.byteLength == 0) {
+            return Promise.reject(new Error('key file has zero bytes'));
+        } else if (arr.byteLength == 32) {
+            // file content is the key
+            return Promise.resolve(arr);
+        } else if (arr.byteLength == 64) {
+            // file content may be a hex string of the key
+            newArr = hex2arr(new TextDecoder().decode(arr));
+
+            if (newArr.length == 32) {
+                return Promise.resolve(newArr);
+            }
+        }
+
+        // attempt to parse xml
+        try {
+            doc = new DOMParser().parseFromString(new TextDecoder().decode(arr), 'text/xml');
+            keyNode = doc.evaluate('//KeyFile/Key/Data', doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+
+            if (keyNode.singleNodeValue && keyNode.singleNodeValue.textContent) {
+                return Promise.resolve(Base64.decode(keyNode.singleNodeValue.textContent));
+            }
+        } catch (err) {
+            // continue, not valid xml keyfile
+        }
+
+        return window.crypto.subtle.digest({name: 'SHA-256'}, arr);
+    }
+};

@@ -1,24 +1,25 @@
 describe('OneDrive file manager', function () {
-
-    var fileManager, $httpBackend, $q, $rootScope;
-    var oneDriveUrl = 'https://api.onedrive.com/v1.0/drive/root/view.search?q=kdb&filter=file%20ne%20null';
+    var fileManager, $httpBackend, $q, $rootScope, $http,
+        oneDriveUrl = 'https://api.onedrive.com/v1.0/drive/root/view.search?q=kdb&filter=file%20ne%20null';
 
     beforeEach(inject(function ($injector) {
+        var settings;
+
         $httpBackend = $injector.get('$httpBackend');
         $q = $injector.get('$q');
         $rootScope = $injector.get('$rootScope');
 
-        var settings = {
+        settings = {
             getAccessToken: function () {
                 return $q.when('token');
             }
         };
 
-        var $http = $injector.get('$http');
-        fileManager = new OneDriveFileManager($http, $q, settings);
+        $http = $injector.get('$http');
+        fileManager = new _CKP.FileManager.OneDriveFileManager($http, $q, settings);
     }));
 
-    afterEach(function() {
+    afterEach(function () {
         $httpBackend.verifyNoOutstandingExpectation();
         $httpBackend.verifyNoOutstandingRequest();
     });
@@ -132,7 +133,7 @@ describe('OneDrive file manager', function () {
 
             fileManager.listDatabases().then(function (files) {
                 files.should.eql([
-                    { title: '/Documents/file1.kdb', url: 'http://url/to/file1.kdb' },
+                    { title: '/Documents/file1.kdb', url: 'http://url/to/file1.kdb' }
                 ]);
                 done();
             });

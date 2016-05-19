@@ -1,14 +1,13 @@
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
 
-//simple service to link to the options page
-function OptionsLink() {
-  var exports = {
-    go: go
-  }
+_CKP.Services = _CKP.Services || {};
 
-  function go() {
-    chrome.runtime.openOptionsPage();
-  }
-
-  return exports;
-}
+// simple service to link to the options page
+_CKP.Services.OptionsLink = function OptionsLink() {
+    return {
+        go: function go() {
+            chrome.runtime.openOptionsPage();
+        }
+    };
+};

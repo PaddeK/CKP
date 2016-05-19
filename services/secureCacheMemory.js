@@ -24,87 +24,69 @@ THE SOFTWARE.
 
 */
 
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
+
+_CKP.Services = _CKP.Services || {};
 
 /**
  * Storage in background page memory.
  */
-function SecureCacheMemory(protectedMemory) {
-  var exports = {}
+_CKP.Services.SecureCacheMemory = function SecureCacheMemory(ProtectedMemory) {
+    var awaiting = [],
+        notifyReady,
+        readyPromise = new Promise(function(resolve) {
+            notifyReady = resolve;
+        });
 
-  var awaiting = [];
-  var messageReceived;
-  var notifyReady;
-  var ready = new Promise(function(resolve) {
-    notifyReady = resolve;
-  });
-  exports.ready = function() {
-    return ready.then(function(port) {
-      return true;
+    // init. get tabId and open a port
+    chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
+        if (tabs && tabs.length) {
+            notifyReady(chrome.runtime.connect({name: 'tab' + tabs[0].id}));
+        }
     });
-  };
 
-  var promise = new Promise(function(resolve, reject) {
-    messageReceived = resolve;
-  });
+    readyPromise.then(function (port) {
+        port.onMessage.addListener(function (serializedSavedState) {
+            var notifier = awaiting.shift();// called from the background when we get a response, i.e. some saved state.
 
-  //init.  get tabId and open a port
-  chrome.tabs.query({
-    active: true,
-    currentWindow: true
-  }, function(tabs) {
-    if (tabs && tabs.length) {
-      var port = chrome.runtime.connect({
-        name: "tab" + tabs[0].id
-      });
+            notifier(ProtectedMemory.hydrate(serializedSavedState)); //notify others
+        });
+    });
 
-      notifyReady(port);
+    return {
+        ready: ready,
+        get: get,
+        clear: clear,
+        save: save
+    };
+
+    function ready() {
+        return readyPromise.then(function () {
+            return true;
+        });
     }
-  });
 
-  ready.then(function(port) {
-    port.onMessage.addListener(function(serializedSavedState) {
-      //called from the background when we get a response, i.e. some saved state.
-      var savedState = protectedMemory.hydrate(serializedSavedState);
-      var notifier = awaiting.shift();
-      notifier(savedState); //notify others
-    });
-  });
+    // wake up the background page and get a pipe to send/receive messages:
+    function get(key) {
+        readyPromise.then(function (port) {
+            port.postMessage({action: 'get', key: key});
+        });
 
-  //wake up the background page and get a pipe to send/receive messages:
-  exports.get = function(key) {
-    ready.then(function(port) {
-      port.postMessage({
-        action: 'get',
-        key: key
-      });
-    });
+        return new Promise(function (resolve) {
+            awaiting.push(resolve);
+        });
+    }
 
-    var p = new Promise(function(resolve) {
-      awaiting.push(resolve);
-    });
+    function clear() {
+        return readyPromise.then(function (port) {
+            port.postMessage({action: 'clear'});
+        });
+    }
 
-    return p; //will resolve when we get something
-  }
-
-  exports.clear = function() {
-    return ready.then(function(port) {
-      port.postMessage({
-        action: 'clear'
-      });
-    })
-  }
-
-  exports.save = function(key, value) {
-    return ready.then(function(port) {
-      var serializedValue = protectedMemory.serialize(value);
-      port.postMessage({
-        action: 'save',
-        key: key,
-        value: serializedValue
-      });
-    })
-  }
-
-  return exports;
-}
+    function save(key, value) {
+        return readyPromise.then(function (port) {
+            port.postMessage({action: 'save', key: key, value: ProtectedMemory.serialize(value)});
+        });
+    }
+};

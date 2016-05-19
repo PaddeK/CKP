@@ -24,79 +24,139 @@ THE SOFTWARE.
 
 */
 
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
+
+_CKP.Services = _CKP.Services || {};
 
 /**
  * Shared state and methods for an unlocked password file.
  */
-function UnlockedState($interval, $location, keepass, protectedMemory, settings) {
-	var my = {
-		tabId: "", //tab id of current tab
-		url: "", //url of current tab
-		title: "", //window title of current tab
-		origin: "", //url of current tab without path or querystring
-		sitePermission: false, //true if the extension already has rights to autofill the password
-		entries: null, //filtered password database entries
-		streamKey: null, //key for accessing protected data fields
-		clipboardStatus: "" //status message about clipboard, used when copying password to the clipboard
+_CKP.Services.UnlockedState = function UnlockedState($interval, $location, KeepassDb, ProtectedMemory, Settings) {
+	var _tabId, _url, _title, _origin, _sitePermission, _entries, _streamKey, _clipboardStatus,
+		timerInstance, copyEntry;
+
+	_tabId = '';             // tab id of current tab
+	_url = '';               // url of current tab
+	_title = '';             // window title of current tab
+	_origin = '';            // url of current tab without path or querystring
+	_sitePermission = false; // true if the extension already has rights to autofill the password
+	_entries = null; 	     // filtered password database entries
+	_streamKey = null; 	     // key for accessing protected data fields
+	_clipboardStatus = '';   // status message about clipboard, used when copying password to the clipboard
+
+	$interval(clearBackgroundState, 60000, 1);  // clear backgroundstate after 10 minutes live - we should never be alive that long
+
+	// listens for the copy event and does the copy
+	document.addEventListener('copy', function (e) {
+		var textToPutOnClipboard,
+			seconds = 60;
+
+		if (!copyEntry) {
+			return; // listener can get registered multiple times
+		}
+
+		textToPutOnClipboard = getPassword(copyEntry);
+		copyEntry = null;
+		e.clipboardData.setData('text/plain', textToPutOnClipboard);
+		e.preventDefault();
+
+		Settings.setForgetTime('clearClipboard', Date.now() + 60000);
+
+		chrome.alarms.clear('forgetStuff', function () {
+			// reset alarm timer so that it fires about 1 minute from now
+			chrome.alarms.create('forgetStuff', {
+				delayInMinutes: 1,
+				periodInMinutes: 10
+			});
+		});
+
+		// actual clipboard clearing occurs on the background task via alarm, this is just for user feedback:
+		_clipboardStatus = 'Copied to clipboard. Clipboard will clear in 60 seconds.';
+
+		if (timerInstance) {
+			// cancel previous timer
+			$interval.cancel(timerInstance);
+		}
+
+		// do timer to show countdown
+		timerInstance = $interval(function () {
+			seconds--;
+
+			if (seconds <= 0) {
+				_clipboardStatus = 'Clipboard cleared';
+				$interval.cancel(timerInstance);
+			} else {
+				_clipboardStatus = 'Copied to clipboard. Clipboard will clear in ' + seconds + ' seconds.';
+			}
+		}, 1000);
+	});
+
+	return {
+		getTabId: function () { return _tabId; },
+		getUrl: function () { return _url; },
+		getTitle: function () { return _title; },
+		getOrigin: function () { return _origin; },
+		getSitePermission: function () { return _sitePermission; },
+		getEntries: function () { return _entries; },
+        setEntries: function(entries) { _entries = entries; },
+		setStreamKey: function (streamKey) { _streamKey = streamKey; },
+		getClipboardStatus: function () { return _clipboardStatus; },
+		getTabDetails: getTabDetails,
+		clearBackgroundState: clearBackgroundState,
+		autofill: autofill,
+		copyPassword: copyPassword,
+		gotoDetails: gotoDetails,
+		getDecryptedAttribute: getDecryptedAttribute
 	};
-	var streamKey, copyEntry;
 
-	//determine current url:
-	my.getTabDetails = function() {
-		return new Promise(function(resolve, reject) {
-			chrome.tabs.query({
-				active: true,
-				currentWindow: true
-			}, function(tabs) {
+	// determine current url:
+	function getTabDetails() {
+		return new Promise(function (resolve, reject) {
+			chrome.tabs.query({active: true, currentWindow: true}, function (tabs) {
+				var parsedUrl, url;
+
 				if (tabs && tabs.length) {
-					my.tabId = tabs[0].id;
-					var url = tabs[0].url.split('?');
-					my.url = url[0];
-					my.title = tabs[0].title;
+					_tabId = tabs[0].id;
+					url = tabs[0].url.split('?');
+					_url = url[0];
+					_title = tabs[0].title;
+					parsedUrl = parseUrl(tabs[0].url);
+					_origin = parsedUrl.protocol + '//' + parsedUrl.hostname + '/';
 
-					var parsedUrl = parseUrl(tabs[0].url);
-					my.origin = parsedUrl.protocol + '//' + parsedUrl.hostname + '/';
-
-					chrome.p.permissions.contains({
-						origins: [my.origin]
-					})
-						.then(function() {
-							my.sitePermission = true;
-						})
-						.catch(function(err) {
-							my.sitePermission = false;
-						})
-						.then(function() {
-							resolve();
-						})
+					chrome.p.permissions.contains({origins: [_origin]}).then(function () {
+						_sitePermission = true;
+					}).catch(function () {
+						_sitePermission = false;
+					}).then(function () {
+						resolve();
+					});
 				} else {
-					reject(new Error("Unable to determine tab details"));
+					reject(new Error('Unable to determine tab details'));
 				}
 			});
 		});
-	};
-
-	my.clearBackgroundState = function() {
-		my.entries = null;
-		my.streamKey = null;
-		my.clipboardStatus = "";
 	}
-	$interval(my.clearBackgroundState, 60000, 1);  //clear backgroundstate after 10 minutes live - we should never be alive that long
 
-	my.autofill = function(entry) {
-		settings.getUseCredentialApiFlag().then(useCredentialApi => {
+	function clearBackgroundState() {
+		_entries = null;
+		_streamKey = null;
+		_clipboardStatus = '';
+	}
+
+	function autofill(entry) {
+		Settings.getUseCredentialApiFlag().then(function (useCredentialApi) {
 			chrome.runtime.sendMessage({
-				m: "requestPermission",
+				m: 'requestPermission',
 				perms: {
-					origins: [my.origin]
+					origins: [_origin]
 				},
 				then: {
-					m: "autofill",
-					tabId: my.tabId,
+					m: 'autofill',
+					tabId: _tabId,
 					u: entry.userName,
 					p: getPassword(entry),
-					o: my.origin,
+					o: _origin,
 					uca: useCredentialApi
 				}
 			});
@@ -105,88 +165,46 @@ function UnlockedState($interval, $location, keepass, protectedMemory, settings)
 		})
 	}
 
-	//get clear-text password from entry
+	// get clear-text password from entry
 	function getPassword(entry) {
 		if (entry.protectedData && entry.protectedData.password)
-			return keepass.getDecryptedEntry(entry.protectedData.password, my.streamKey);
+			return KeepassDb.getDecryptedEntry(entry.protectedData.password, _streamKey);
 		else {
-			//KyPass support - it does not use protectedData for passwords that it adds
+			// KyPass support - it does not use protectedData for passwords that it adds
 			return entry.password;
 		}
 	}
 
-	my.copyPassword = function(entry) {
+	function copyPassword(entry) {
 		copyEntry = entry;
 		entry.copied = true;
 		document.execCommand('copy');
 	}
 
-	my.gotoDetails = function(entry) {
-		$location.path('/entry-details/' + entry.id);
+	function gotoDetails(entry) {
+		$location.path('/entryDetails/' + entry.id);
 	}
 
-	my.getDecryptedAttribute = function(protectedAttr) {
-		return keepass.getDecryptedEntry(protectedAttr, my.streamKey);
+	function getDecryptedAttribute(protectedAttr) {
+		return KeepassDb.getDecryptedEntry(protectedAttr, _streamKey);
 	}
-
-	//listens for the copy event and does the copy
-	var timerInstance;
-	document.addEventListener('copy', function(e) {
-		if (!copyEntry) {
-			return; //listener can get registered multiple times
-		}
-
-		var textToPutOnClipboard = getPassword(copyEntry);
-		copyEntry = null;
-		e.clipboardData.setData('text/plain', textToPutOnClipboard);
-		e.preventDefault();
-
-		settings.setForgetTime('clearClipboard', Date.now() + 1 * 60000)
-		chrome.alarms.clear("forgetStuff", function() {
-			//reset alarm timer so that it fires about 1 minute from now
-			chrome.alarms.create("forgetStuff", {
-				delayInMinutes: 1,
-				periodInMinutes: 10
-			});
-		})
-
-		//actual clipboard clearing occurs on the background task via alarm, this is just for user feedback:
-		my.clipboardStatus = "Copied to clipboard.  Clipboard will clear in 60 seconds."
-		var seconds = 60;
-		if (timerInstance) {
-			//cancel previous timer
-			$interval.cancel(timerInstance)
-		}
-
-		//do timer to show countdown
-		timerInstance = $interval(function() {
-			seconds -= 1;
-			if (seconds <= 0) {
-				my.clipboardStatus = "Clipboard cleared"
-				$interval.cancel(timerInstance);
-			} else {
-				my.clipboardStatus = "Copied to clipboard.  Clipboard will clear in " + seconds + " seconds."
-			}
-		}, 1000);
-	});
 
 	function parseUrl(url) {
-		//from https://gist.github.com/jlong/2428561
+        // from https://gist.github.com/jlong/2428561
 		var parser = document.createElement('a');
+
 		parser.href = url;
 
 		/*
-    parser.protocol; // => "http:"
-    parser.hostname; // => "example.com"
-    parser.port;     // => "3000"
-    parser.pathname; // => "/pathname/"
-    parser.search;   // => "?search=test"
-    parser.hash;     // => "#hash"
-    parser.host;     // => "example.com:3000"
-    */
+        parser.protocol; // => "http:"
+        parser.hostname; // => "example.com"
+        parser.port;     // => "3000"
+        parser.pathname; // => "/pathname/"
+        parser.search;   // => "?search=test"
+        parser.hash;     // => "#hash"
+        parser.host;     // => "example.com:3000"
+        */
 
 		return parser;
 	}
-
-	return my;
-}
+};

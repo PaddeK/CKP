@@ -1,0 +1,22 @@
+{
+    "chooseFile": {
+        "url": "/popups/partials/chooseFile.html",
+        "ctrl": "ChooseFileController"
+    },
+    "entryDetails": {
+        "url": "/popups/partials/entryDetails.html",
+        "ctrl": "EntryDetailsController"
+    },
+    "findEntry": {
+        "url": "/popups/partials/findEntry.html",
+        "ctrl": "FindEntryController"
+    },
+    "masterPassword": {
+        "url": "/popups/partials/masterPassword.html",
+        "ctrl": "MasterPasswordController"
+    },
+    "startup": {
+        "url": "/popups/partials/startup.html",
+        "ctrl": "StartupController"
+    }
+}

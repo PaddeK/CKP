@@ -1,0 +1,11 @@
+document.write('<script type="text/javascript" src="/options/controllers/advanced.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/dragDropFile.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/dropboxFile.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/fileSource.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/googleDriveFile.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/keyFiles.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/navigation.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/oneDriveFile.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/sampleDatabase.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/startup.js"></script>');
+document.write('<script type="text/javascript" src="/options/controllers/storedData.js"></script>');

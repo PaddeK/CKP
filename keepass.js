@@ -29,57 +29,60 @@ THE SOFTWARE.
 
 */
 
-chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-	"use strict";
+chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+	'use strict';
 
-	if (!message || !message.m)
-		return; //unrecognized message format
+    // whitelist some known iframe origin mismatches
+    var whiteListedHostnameMismatches = [
+        {documentOrigin: 'onlinebanking.usbank.com', expectedOrigin: 'www.usbank.com'}
+    ];
 
-	//whitelist some known iframe origin mismatches
-	var whiteListedHostnameMismatches = [
-		{documentOrigin: 'onlinebanking.usbank.com', expectedOrigin: 'www.usbank.com'}
-	]
+	if (!message || !message.m) {
+		return; // unrecognized message format
+	}
 
 	if (message.m == 'ping') {
 		// ping, to check if we're injected already
-		sendResponse({'message': 'hi'});
-		return;
+		return sendResponse({'message': 'hi'});
 	}
 
-	if (message.m == "fillPassword") {
-		//user has selected to fill the password
+	if (message.m == 'fillPassword') {
+		// user has selected to fill the password
 
-		//first check the origins.  This is necessary because we support iframes, and
-		//this script is injected into all, some of which may be malicious.  So we
-		//limit ourselves to the same origin.  Protocol (http vs https) is allowed to
-		//mismatch, but in that case we will only fill the password on the https.
-		var documentOrigin = parseUrl(document.URL);
-		var expectedOrigin = parseUrl(message.o);
-		var whiteListed = !!whiteListedHostnameMismatches.filter(function(item) {
-			return item.documentOrigin === documentOrigin.hostname && item.expectedOrigin === expectedOrigin.hostname
-		}).length;
+		// first check the origins. This is necessary because we support iframes, and
+		// this script is injected into all, some of which may be malicious. So we
+		// limit ourselves to the same origin. Protocol (http vs https) is allowed to
+		// mismatch, but in that case we will only fill the password on the https.
+		if (passOriginCheck(document.URL, message.o, whiteListedHostnameMismatches)) {
+            // passed the origin check - go ahead and fill the password
+            _CKP.filler.fillPassword(message.u, message.p);
 
-		if ((documentOrigin.hostname !== expectedOrigin.hostname && !whiteListed)
-			|| (documentOrigin.protocol !== expectedOrigin.protocol && documentOrigin.protocol !== 'https:'))
-			return;
+            if (message.uca && navigator.credentials) {
+                // try to tell Chrome to remember the password
+                let credential = new PasswordCredential({id: message.u, password: message.p});
 
-		//passed the origin check - go ahead and fill the password
-		filler.fillPassword(message.u, message.p);
-
-		if (message.uca && navigator.credentials) {
-			// try to tell Chrome to remember the password
-			let credential = new PasswordCredential({
-				'id': message.u,
-				'password': message.p
-			})
-			navigator.credentials.store(credential).then( results => {
-				console.log(results);
-			});
-		}
+                navigator.credentials.store(credential).then(function (results) {
+                    console.log(results);
+                });
+            }
+        }
 	}
+
+    function passOriginCheck(documentUrl, messageOrigin, whiteList) {
+		var docOrigin = parseUrl(documentUrl),
+		    expOrigin = parseUrl(messageOrigin),
+            hostMatch = docOrigin.hostname === expOrigin.hostname,
+            protocolMatch = docOrigin.protocol === expOrigin.protocol,
+            isHttps = docOrigin.protocol === 'https:',
+		    whiteListed = !!whiteList.filter(function (item) {
+			    return item.documentOrigin === docOrigin.hostname && item.expectedOrigin === expOrigin.hostname
+		    }).length;
+
+		return (hostMatch || whiteListed) && (protocolMatch || isHttps);
+    }
 
 	function parseUrl(url) {
-		//from https://gist.github.com/jlong/2428561
+		// from https://gist.github.com/jlong/2428561
 		var parser = document.createElement('a');
 		parser.href = url;
 
@@ -97,162 +100,140 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 	}
 });
 
-var filler = (function() {
-	"use strict";
+var _CKP = _CKP || {};
 
-	var userPasswordPairs = [];
-	var lonelyPasswords = [];  //passwords without usernames
-	var priorityPair = null;   //most likely pair of fields.
+_CKP.filler = (function() {
+	'use strict';
 
-	function identifyPasswordFields() {
-		//identify user/password pairs
-		userPasswordPairs = [];
-		lonelyPasswords = [];
-		priorityPair = null;
-		var inputPattern = "input[type='text'], input[type='email'], input[type='password'], input:not([type])";
+    function findPriorityPair(inputPattern) {
+        var focusedIndex, field,
+            focusedPassword = false,
+            pair = {},
+            all = $(inputPattern),
+            focusedField = all.filter(':focus');
 
-		//algorithm 1 - based on focused field
-		var focusedField = $(inputPattern).filter(':focus');
 		if (focusedField.length) {
-			var pair = {}, focusedPassword = false;
-			if (isPasswordField(focusedField)) {
-				pair.p = focusedField;
-				focusedPassword = true;
-			} else {
-				pair.u = focusedField;
-			}
+			focusedIndex = all.index(focusedField);
 
-			var all = $(inputPattern);
-			var focusedIndex = all.index(focusedField);
+            focusedPassword = isPasswordField(focusedField);
+            pair[focusedPassword ? 'p' : 'u'] = focusedField;
+
 			if (focusedIndex > -1 && focusedIndex < all.length) {
 				if (focusedPassword && focusedIndex > 0) {
-					//field before the password is the username
+					// field before the password is the username
 					pair.u = all.eq(focusedIndex - 1);
 				} else if (!focusedPassword && focusedIndex < all.length) {
-					//field after the username is the password
-					pair.p = all.eq(focusedIndex + 1);
+					// field after the username is the password
+                    field = all.eq(focusedIndex + 1);
+					if (isPasswordField(field) && field.is(':visible')) {
+                        pair.p = all.eq(focusedIndex + 1);
+                    }
 				}
 			}
 
-			priorityPair = pair;
+            if (pair.p && pair.u) {
+			    return [pair];
+            }
 		}
 
-		//algorithm 2 - based on types of fields and visibility
-		var possibleUserName;
-		var lastFieldWasPassword = false; //used to detect registration forms which have 2 password fields, one after the other
+        return [];
+    }
+
+    function findPairs(inputPattern) {
+		var possibleUserName, field,
+            pairs = [],
+            lonePassword = [],
+            lastFieldWasPassword = false; // used to detect registration forms which have 2 password fields, one after the other
+
 		$(inputPattern).each(function() {
-			var field = $(this);
+			field = $(this);
+
 			if (isElementInViewport(field) && field.is(':visible')) {
 				if (isPasswordField(field)) {
 					if (possibleUserName) {
-						userPasswordPairs.push({
-							'u': possibleUserName,
-							'p': field
-						});
+						pairs.push({u: possibleUserName, p: field});
 						possibleUserName = null;
 						lastFieldWasPassword = true;
 					} else if (lastFieldWasPassword) {
-						//special case - two passwords in a row means it is a registration form, so remove last-added pair
-						userPasswordPairs.pop();
+						// special case - two passwords in a row means it is a registration form, so remove last-added pair
+						pairs.pop();
 						lastFieldWasPassword = false;
 					} else {
-						//special case = password by itself
-						lonelyPasswords.push(field);
+						// special case = password by itself
+						lonePassword.push({p: field});
 					}
-				}
-				else {
-					possibleUserName = field;
-					lastFieldWasPassword = false;
-				}
+				} else {
+                    possibleUserName = field;
+                    lastFieldWasPassword = false;
+                }
 			}
 		});
+
+        return pairs.concat(lonePassword);
+    }
+
+	function identifyPasswordFields() {
+        var inputPattern = "input[type='text'], input[type='email'], input[type='password'], input:not([type])",
+            pairs = findPriorityPair(inputPattern);
+
+        if (!pairs.length) {
+            pairs = findPairs(inputPattern);
+        }
+
+        return pairs;
 	}
 
 	function isPasswordField(field) {
-		if (field.attr('type') && field.attr('type').toLowerCase() == 'password')
-			return true;
-
-		return false;
+		return field.attr('type') && field.attr('type').toLowerCase() == 'password';
 	}
 
 	function fillPassword(username, password) {
-		identifyPasswordFields();
-		var filled = false;
-
-		if (priorityPair) {
-			//don't bother with the others, this is the one
-			if (priorityPair.u && priorityPair.u.is(':visible'))
-				fillField(priorityPair.u, username);
-
-			if (priorityPair.p && priorityPair.p.is(':visible'))
-				fillField(priorityPair.p, password);
-
-			return;
-		}
-
-		if (userPasswordPairs.length > 0) {
-			//we have found some possible username/passwords.  Check if the are visible:
-			for (var i = 0; i < userPasswordPairs.length; i++) {
-				var pair = userPasswordPairs[i];
-				if (!filled && isElementInViewport(pair.u) && isElementInViewport(pair.p)
-				&& pair.p.is(":visible")) {
-					filled = fillField(pair.p, password);
-					if (pair.u.is(":visible")) {
-						//sometimes the username is invisible, i.e. google login
-						fillField(pair.u, username);
-					}
-				}
-			}
-		}
-
-		if (!filled) {
-			for (var i=0; i<lonelyPasswords.length; i++) {
-				var lonelyPassword = lonelyPasswords[i];
-				if (!filled && isElementInViewport(lonelyPassword) && lonelyPassword.is(':visible')) {
-					filled = fillField(lonelyPassword, password);
-				}
-			}
-		}
+        identifyPasswordFields().some(function (pair) {
+            if (pair.u && isElementInViewport(pair.u) && pair.u.is(':visible')) {
+                fillField(pair.u, username);
+            }
+            if (pair.p && isElementInViewport(pair.p) && pair.p.is(':visible')) {
+                return fillField(pair.p, password);
+            }
+        });
 	}
 
 	function fillField(field, val) {
 		sendKeyEvent(field);
 		field.val(val);
-		var filled = (field.val() === val);
-		return filled;
+		return field.val() === val;
 	}
 
 	function sendKeyEvent(field) {
-		field.focus();
-
 		var eventsToFire = {
 			keydown: 'KeyboardEvent',
 			keyup  : 'KeyboardEvent',
-			change : 'HTMLEvents',
+			change : 'HTMLEvents'
 		};
 
-		window.setTimeout(function() {
-			for (var i in eventsToFire) {
-				var evt = document.createEvent(eventsToFire[i]);
-				evt.initEvent(i, true, true);
-				field.get(0).dispatchEvent(evt);
-			}
-		});
+		field.focus();
+
+		window.setTimeout(function () {
+            Object.keys(eventsToFire).forEach(function (i) {
+                var evt = document.createEvent(eventsToFire[i]);
+                evt.initEvent(i, true, true);
+                field.get(0).dispatchEvent(evt);
+            });
+		}, 4); // HTML5 min delay
 	}
 
 	/**
-	function to determine if element is visible
-	*/
+     * function to determine if element is visible
+	 */
 	function isElementInViewport(el) {
-		//special bonus for those using jQuery
-		if (el instanceof jQuery) {
-			el = el[0];
-		}
+        var rect,
+            height = window.innerHeight || document.documentElement.clientHeight, // or $(window).height()
+            width = window.innerWidth || document.documentElement.clientWidth;    // or $(window).width()
 
-		var rect = el.getBoundingClientRect();
-		return (
-			rect.top >= 0 && rect.left >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&  /*or $(window).height() */
-			rect.right <= (window.innerWidth || document.documentElement.clientWidth) /*or $(window).width() */);
+        el = el instanceof jQuery ? el[0] : el; 		// special bonus for those using jQuery
+		rect = el.getBoundingClientRect();
+
+		return (rect.top >= 0 && rect.left >= 0 && rect.bottom <= height && rect.right <= width);
 	}
 
 	return {

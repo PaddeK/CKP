@@ -24,26 +24,26 @@ THE SOFTWARE.
 
 */
 
-"use strict";
+'use strict';
 
 /*
   This page runs as an Event page, not a Background page, so don't use global variables
   (they will be lost)
 */
 
-(function(protectedMemory, settings) {
+(function (ProtectedMemory, Settings) {
 	if (chrome.extension.inIncognitoContext) {
 		doReplaceRules();
 	} else {
 		chrome.runtime.onInstalled.addListener(doReplaceRules);
-		chrome.runtime.onInstalled.addListener(settings.upgrade);
+		chrome.runtime.onInstalled.addListener(Settings.upgrade);
 		chrome.runtime.onStartup.addListener(forgetStuff)
 	}
 
 	function doReplaceRules() {
-		chrome.declarativeContent.onPageChanged.removeRules(undefined, function() {
+		chrome.declarativeContent.onPageChanged.removeRules(undefined, function () {
 			var passwordField = {
-				id: "pwdField",
+                id: "pwdField",
 				conditions: [
 					new chrome.declarativeContent.PageStateMatcher({
 						css: ["input[type='password']"]
@@ -51,7 +51,6 @@ THE SOFTWARE.
 				],
 				actions: [
 					new chrome.declarativeContent.ShowPageAction()
-					//new chrome.declarativeContent.RequestContentScript({js: ['keepass.js']})
 				]
 			};
 			var textField = {
@@ -80,180 +79,164 @@ THE SOFTWARE.
 		});
 	}
 
-	//keep saved state for the popup for as long as we are alive (not long):
-	chrome.runtime.onConnect.addListener(function(port) {
-		//communicate state on this pipe.  each named port gets its own state.
-		port.onMessage.addListener(function(msg) {
-			if (!msg) return;
+	// keep saved state for the popup for as long as we are alive (not long):
+	chrome.runtime.onConnect.addListener(function (port) {
+		// communicate state on this pipe.  each named port gets its own state.
+		port.onMessage.addListener(function (msg) {
+			if (!msg) {
+                return;
+            }
 			switch (msg.action) {
 				case 'clear':
-					protectedMemory.clearData();
+					ProtectedMemory.clearData();
 					break;
 				case 'save':
-					protectedMemory.setData(msg.key, msg.value);
+					ProtectedMemory.setData(msg.key, msg.value);
 					break;
 				case 'get':
-					protectedMemory.getData(msg.key).then(function(value) {
+					ProtectedMemory.getData(msg.key).then(function (value) {
 						port.postMessage(value);
 					});
 					break;
 				default:
-					throw new Error('unrecognized action ' + obj.action)
+					throw new Error('unrecognized action ' + obj.action);
 					break;
 			}
 		});
 
-		port.onDisconnect.addListener(function() {
-			//uncomment below to forget the state when the popup closes
-			//protectedMemory.clearData();
+		port.onDisconnect.addListener(function () {
+            // uncomment below to forget the state when the popup closes
+			// protectedMemory.clearData();
 		})
 	});
 
 	function handleMessage(message, sender, sendResponse) {
-		if (!message || !message.m) return; //message format unrecognized
+		if (!message || !message.m) {
+            return; // message format unrecognized
+        }
 
-		if (message.m == "requestPermission") {
-			//better to do the request here on the background, because on some platforms
-			//the popup may close prematurely when requesting access
-			chrome.permissions.contains(message.perms, function(alreadyGranted) {
+		if (message.m == 'requestPermission') {
+			// better to do the request here on the background, because on some platforms
+			// the popup may close prematurely when requesting access
+			chrome.permissions.contains(message.perms, function (alreadyGranted) {
 				if (chrome.runtime.lastError || (alreadyGranted && message.then)) {
 					handleMessage(message.then, sender, sendResponse);
 				} else {
-					//request
+					// request
 					chrome.permissions.request(message.perms, function(granted) {
 						if (granted && message.then) {
-							handleMessage(message.then, sender, sendResponse);
+                            handleMessage(message.then, sender, sendResponse);
 						}
 					});
 				}
 			});
 		}
 
-		if (message.m == "autofill") {
-			alreadyInjected(message.tabId).then( injectedAlready => {
+		if (message.m == 'autofill') {
+			alreadyInjected(message.tabId).then(function (injectedAlready) {
 				if (injectedAlready === true) {
-					chrome.tabs.sendMessage(message.tabId, {
-						m: "fillPassword",
-						u: message.u,
-						p: message.p,
-						o: message.o,
-						uca: message.uca
-					});
-
-					return;
+                    return sendFillPassword(message);
 				}
 
 				chrome.tabs.executeScript(message.tabId, {
-					file: "keepass.js",
+					file: 'keepass.js',
 					allFrames: true,
-					runAt: "document_start"
-				}, function(result) {
-					//script injected
-					chrome.tabs.sendMessage(message.tabId, {
-						m: "fillPassword",
-						u: message.u,
-						p: message.p,
-						o: message.o,
-						uca: message.uca
-					});
-				});
-			})
+					runAt: 'document_start'
+				}, sendFillPassword.bind(null, message));
+			});
 		}
 	}
+
+    function sendFillPassword(message) {
+        chrome.tabs.sendMessage(message.tabId, {
+            m: 'fillPassword',
+            u: message.u,
+            p: message.p,
+            o: message.o,
+            uca: message.uca
+        });
+    }
 
 	// function to determine if the content script is already injected, so we don't do it twice
 	function alreadyInjected(tabId) {
-		return new Promise( (resolve, reject) => {
-			chrome.tabs.sendMessage(tabId, {m: 'ping'}, response => {
-				if (response) 
-					resolve(true);
-				else {
-					let err = chrome.runtime.lastError;
-					resolve(false); 
-				} 
-			})	
-		})
-		
+		return new Promise(function (resolve, reject) {
+			chrome.tabs.sendMessage(tabId, {m: 'ping'}, function (response) {
+                resolve(!!response);
+			});
+		});
 	}
 
-	//listen for "autofill" message:
+	// listen for "autofill" message:
 	chrome.runtime.onMessage.addListener(handleMessage);
 
-	chrome.alarms.create("forgetStuff", {
-		delayInMinutes: 1,
-		periodInMinutes: 10
-	});
+	chrome.alarms.create('forgetStuff', {delayInMinutes: 1, periodInMinutes: 10});
 
-	chrome.alarms.onAlarm.addListener(function(alarm) {
+	chrome.alarms.onAlarm.addListener(function (alarm) {
+		var notificationClear = alarm.name.match(/^clearNotification-(.*)$/);
+
 		if (alarm.name == 'forgetStuff') {
-			forgetStuff();
-			return;
+			return forgetStuff();
 		}
 
-		var notificationClear = alarm.name.match(/^clearNotification-(.*)$/)
 		if (notificationClear.length == 2) {
-			chrome.notifications.clear(notificationClear[1])
+			chrome.notifications.clear(notificationClear[1]);
 		}
 	});
 
 	function forgetStuff() {
-		settings.getAllForgetTimes().then(function(allTimes) {
-			var now = Date.now();
-			var forgottenKeys = [];
-			for (var key in allTimes) {
+		Settings.getAllForgetTimes().then(function (allTimes) {
+			var now = Date.now(),
+                notificationConfig = {
+                    type: 'basic',
+                    iconUrl: 'assets/icons/logo_48.png',
+                    title: 'CKP'
+                },
+			    forgottenKeys = [];
+
+            Object.keys(allTimes).forEach(function (key) {
 				if (allTimes[key] < now) {
 					forgottenKeys.push(key);
+
 					switch (key) {
 						case 'clearClipboard':
 							clearClipboard();
-							chrome.notifications.create({
-								'type': 'basic',
-								'iconUrl': 'assets/icons/logo_48.png',
-								'title': 'CKP',
-								'message': 'Clipboard cleared'
-							}, function(notificationId) {
-								setTimeout(function() {
+                            notificationConfig.message = 'Clipboard cleared';
+							chrome.notifications.create(notificationConfig, function (notificationId) {
+								setTimeout(function () {
 									chrome.notifications.clear(notificationId);
 								}, 2000);
-							})
+							});
 							break;
 						case 'forgetPassword':
-							forgetPassword().then(function() {
-								chrome.notifications.create({
-									'type': 'basic',
-									'iconUrl': 'assets/icons/logo_48.png',
-									'title': 'CKP',
-									'message': 'Remembered password expired'
-								}, function(notificationId) {
-									chrome.alarms.create('clearNotification-'+notificationId, {
-										delayInMinutes: 1
-									});
-								})
-							})
-							
+							forgetPassword().then(function () {
+                                notificationConfig.message = 'Remembered password expired';
+								chrome.notifications.create(notificationConfig, function (notificationId) {
+									chrome.alarms.create('clearNotification-'+notificationId, {delayInMinutes: 1});
+								});
+							});
 							break;
 					}
 				}
-			}
+            });
 
-			//remove stuff
-			settings.clearForgetTimes(forgottenKeys);
+			// remove stuff
+			Settings.clearForgetTimes(forgottenKeys);
 		});
 	}
 
 	function clearClipboard() {
-		var clearClipboard = function(e) {
-			e.clipboardData.setData('text/plain', "");
+		var clearClipboard = function (e) {
+			e.clipboardData.setData('text/plain', '');
 			e.preventDefault();
-			document.removeEventListener('copy', clearClipboard); //don't listen anymore
-		}
+			document.removeEventListener('copy', clearClipboard); // don't listen anymore
+		};
 
 		document.addEventListener('copy', clearClipboard);
 		document.execCommand('copy');
 	}
 
 	function forgetPassword() {
-		return settings.saveCurrentDatabaseUsage({});
+		return Settings.saveCurrentDatabaseUsage({});
 	}
 
-})(new ProtectedMemory(), new Settings());
+})(new _CKP.Services.ProtectedMemory(), new _CKP.Services.Settings());

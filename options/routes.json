@@ -1,0 +1,42 @@
+{
+    "advanced": {
+        "url": "/options/partials/advanced.html",
+        "ctrl": "AdvancedController"
+    },
+    "dragDropFile": {
+        "url": "/options/partials/dragDropFile.html",
+        "ctrl": "DragDropFileController"
+    },
+    "dropboxFile": {
+        "url": "/options/partials/dropboxFile.html",
+        "ctrl": "DropboxFileController"
+    },
+    "fileSource": {
+        "url": "/options/partials/fileSource.html",
+        "ctrl": "FileSourceController"
+    },
+    "googleDriveFile": {
+        "url": "/options/partials/googleDriveFile.html",
+        "ctrl": "GoogleDriveFileController"
+    },
+    "keyFiles": {
+        "url": "/options/partials/keyFiles.html",
+        "ctrl": "KeyFilesController"
+    },
+    "oneDriveFile": {
+        "url": "/options/partials/oneDriveFile.html",
+        "ctrl": "OneDriveFileController"
+    },
+    "sampleDatabase": {
+        "url": "/options/partials/sampleDatabase.html",
+        "ctrl": "SampleDatabaseController"
+    },
+    "startup": {
+        "url": "/options/partials/startup.html",
+        "ctrl": "StartupController"
+    },
+    "storedData": {
+        "url": "/options/partials/storedData.html",
+        "ctrl": "StoredDataController"
+    }
+}

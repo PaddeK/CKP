@@ -1,10 +1,14 @@
-"use strict";
+'use strict';
+var _CKP = _CKP || {};
 
-function StartupController($scope, settings) {
+_CKP.Options = _CKP.Options || {};
+_CKP.Options.Controller = _CKP.Options.Controller || {};
 
-  settings.getCurrentDatabaseChoice().then(function(choice) {
-    $scope.alreadyChoseDb = (choice == null ? false : true);
-  }).then(function() {
-    $scope.$apply();
-  });
-}
+_CKP.Options.Controller.StartupController = function StartupController($scope, Settings)
+{
+    Settings.getCurrentDatabaseChoice().then(function (choice) {
+        $scope.alreadyChoseDb = choice != null;
+    }).then(function () {
+        $scope.$apply();
+    });
+};
